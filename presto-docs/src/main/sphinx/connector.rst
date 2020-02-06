@@ -26,6 +26,7 @@ from different data sources.
     connector/memsql
     connector/mongodb
     connector/mysql
+    connector/oracle
     connector/phoenix
     connector/postgresql
     connector/redis

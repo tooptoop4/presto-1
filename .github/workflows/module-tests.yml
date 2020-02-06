@@ -93,6 +93,7 @@ jobs:
             !presto-mongodb,!presto-kafka,!presto-elasticsearch,
             !presto-redis,
             !presto-sqlserver,!presto-postgresql,!presto-mysql,
+            !presto-oracle,
             !presto-phoenix,!presto-iceberg,
             !presto-docs,!presto-server,!presto-server-rpm'
 
@@ -113,6 +114,7 @@ jobs:
           "presto-mongodb,presto-kafka,presto-elasticsearch",
           "presto-redis",
           "presto-sqlserver,presto-postgresql,presto-mysql",
+          "presto-oracle",
           "presto-phoenix,presto-iceberg",
         ]
     steps:
