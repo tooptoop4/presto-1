@@ -70,6 +70,7 @@ public final class OracleQueryRunner
             connectorProperties.putIfAbsent("connection-user", TEST_USER);
             connectorProperties.putIfAbsent("connection-password", TEST_PASS);
             connectorProperties.putIfAbsent("allow-drop-table", "true");
+            connectorProperties.putIfAbsent("case-insensitive-name-matching", "true");
 
             queryRunner.installPlugin(new OraclePlugin());
             queryRunner.createCatalog("oracle", "oracle", connectorProperties);

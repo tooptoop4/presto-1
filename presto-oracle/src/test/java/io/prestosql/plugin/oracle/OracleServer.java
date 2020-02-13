@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.oracle;
 
+import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.OracleContainer;
 
 import java.io.Closeable;
@@ -27,17 +28,25 @@ public class OracleServer
         extends OracleContainer
         implements Closeable
 {
-    public static final String TEST_SCHEMA = "test";
-    public static final String TEST_USER = "test";
+    public static final String TEST_SCHEMA = "tpch";
+    public static final String TEST_USER = "tpch";
     public static final String TEST_PASS = "oracle";
 
     public OracleServer()
     {
         super("wnameless/oracle-xe-11g-r2");
+
+        // this is added to allow more processes on database, otherwise the tests end up giving a ORA-12519
+        // to fix this we have to execute this command "alter system set processes=300 scope=spfile"
+        // but this command needs a database restart and if we restart the docker the configuration is lost.
+        this.addFileSystemBind("src/test/resources/spfileXE.ora",
+                "/u01/app/oracle/product/11.2.0/xe/dbs/spfileXE.ora",
+                BindMode.READ_WRITE);
+
         start();
         try (Connection connection = DriverManager.getConnection(getJdbcUrl(), super.getUsername(), super.getPassword());
                 Statement statement = connection.createStatement()) {
-            statement.execute(format("CREATE TABLESPACE %s DATAFILE 'test_db.dat' SIZE 20M ONLINE", TEST_SCHEMA));
+            statement.execute(format("CREATE TABLESPACE %s DATAFILE 'test_db.dat' SIZE 100M ONLINE", TEST_SCHEMA));
             statement.execute(format("CREATE USER %s IDENTIFIED BY %s DEFAULT TABLESPACE %s", TEST_USER, TEST_PASS, TEST_SCHEMA));
             statement.execute(format("GRANT UNLIMITED TABLESPACE TO %s", TEST_USER));
             statement.execute(format("GRANT ALL PRIVILEGES TO %s", TEST_USER));

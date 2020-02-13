@@ -24,6 +24,9 @@ import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.connector.ConnectorSession;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.type.BigintType;
+import io.prestosql.spi.type.IntegerType;
+import io.prestosql.spi.type.SmallintType;
+import io.prestosql.spi.type.TinyintType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.spi.type.VarcharType;
 
@@ -41,13 +44,22 @@ import java.util.Optional;
 import java.util.Set;
 
 import static io.prestosql.plugin.jdbc.JdbcErrorCode.JDBC_ERROR;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.bigintColumnMapping;
 import static io.prestosql.plugin.jdbc.StandardColumnMappings.bigintWriteFunction;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.dateColumnMapping;
 import static io.prestosql.plugin.jdbc.StandardColumnMappings.decimalColumnMapping;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.integerColumnMapping;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.integerWriteFunction;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.smallintColumnMapping;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.smallintWriteFunction;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.tinyintColumnMapping;
+import static io.prestosql.plugin.jdbc.StandardColumnMappings.tinyintWriteFunction;
 import static io.prestosql.plugin.jdbc.StandardColumnMappings.varcharColumnMapping;
 import static io.prestosql.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.prestosql.spi.type.DecimalType.createDecimalType;
 import static io.prestosql.spi.type.VarcharType.createUnboundedVarcharType;
 import static io.prestosql.spi.type.VarcharType.createVarcharType;
+import static io.prestosql.spi.type.Varchars.isVarcharType;
 import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Collections.addAll;
@@ -57,6 +69,12 @@ public class OracleClient
 {
     private final int fetchSize;
     private final String[] tableTypes;
+
+    private static final int TINYINT_NUMBER_PRECISION = 3;
+    private static final int SMALLINT_NUMBER_PRECISION = 5;
+    private static final int INTEGER_NUMBER_PRECISION = 10;
+    private static final int BIGINT_NUMBER_PRECISION = 19;
+    private static final int VARCHAR_MAX_LENGTH = 4000;
 
     @Inject
     public OracleClient(
@@ -87,26 +105,6 @@ public class OracleClient
                 escapeNamePattern(schemaName, escape).orElse(null),
                 escapeNamePattern(tableName, escape).orElse(null),
                 tableTypes.clone());
-    }
-
-    @Override
-    public Optional<ColumnMapping> toPrestoType(ConnectorSession session, Connection connection, JdbcTypeHandle typeHandle)
-    {
-        int columnSize = typeHandle.getColumnSize();
-        switch (typeHandle.getJdbcType()) {
-            case Types.CLOB:
-                return Optional.of(varcharColumnMapping(createUnboundedVarcharType()));
-            case Types.NUMERIC:
-                int precision = columnSize == 0 ? 38 : columnSize;
-                int scale = max(typeHandle.getDecimalDigits(), 0);
-                return Optional.of(decimalColumnMapping(createDecimalType(precision, scale), RoundingMode.HALF_UP));
-            case Types.LONGVARCHAR:
-                if (columnSize > VarcharType.MAX_LENGTH || columnSize == 0) {
-                    return Optional.of(varcharColumnMapping(createUnboundedVarcharType()));
-                }
-                return Optional.of(varcharColumnMapping(createVarcharType(columnSize)));
-        }
-        return super.toPrestoType(session, connection, typeHandle);
     }
 
     @Override
@@ -145,10 +143,60 @@ public class OracleClient
     }
 
     @Override
+    public Optional<ColumnMapping> toPrestoType(ConnectorSession session, Connection connection, JdbcTypeHandle typeHandle)
+    {
+        int columnSize = typeHandle.getColumnSize();
+        switch (typeHandle.getJdbcType()) {
+            case Types.CLOB:
+                return Optional.of(varcharColumnMapping(createUnboundedVarcharType()));
+            case Types.NUMERIC:
+                int precision = columnSize == 0 ? 38 : columnSize;
+                int scale = max(typeHandle.getDecimalDigits(), 0);
+                if (scale == 0) {
+                    if (precision <= TINYINT_NUMBER_PRECISION) {
+                        return Optional.of(tinyintColumnMapping());
+                    }
+                    if (precision <= SMALLINT_NUMBER_PRECISION) {
+                        return Optional.of(smallintColumnMapping());
+                    }
+                    if (precision <= INTEGER_NUMBER_PRECISION) {
+                        return Optional.of(integerColumnMapping());
+                    }
+                    if (precision <= BIGINT_NUMBER_PRECISION) {
+                        return Optional.of(bigintColumnMapping());
+                    }
+                }
+                return Optional.of(decimalColumnMapping(createDecimalType(precision, scale), RoundingMode.HALF_UP));
+            case Types.LONGVARCHAR:
+                if (columnSize > VarcharType.MAX_LENGTH || columnSize == 0) {
+                    return Optional.of(varcharColumnMapping(createUnboundedVarcharType()));
+                }
+                return Optional.of(varcharColumnMapping(createVarcharType(columnSize)));
+            case Types.TIMESTAMP:
+                return Optional.of(dateColumnMapping());
+            case Types.VARCHAR:
+                return Optional.of(varcharColumnMapping(VarcharType.createVarcharType(columnSize)));
+        }
+        return super.toPrestoType(session, connection, typeHandle);
+    }
+
+    @Override
     public WriteMapping toWriteMapping(ConnectorSession session, Type type)
     {
+        if (type instanceof TinyintType) {
+            return WriteMapping.longMapping(format("number(%s)", TINYINT_NUMBER_PRECISION), tinyintWriteFunction());
+        }
+        if (type instanceof SmallintType) {
+            return WriteMapping.longMapping(format("number(%s)", SMALLINT_NUMBER_PRECISION), smallintWriteFunction());
+        }
+        if (type instanceof IntegerType) {
+            return WriteMapping.longMapping(format("number(%s)", INTEGER_NUMBER_PRECISION), integerWriteFunction());
+        }
         if (type instanceof BigintType) {
-            return WriteMapping.longMapping("number(19)", bigintWriteFunction());
+            return WriteMapping.longMapping(format("number(%s)", BIGINT_NUMBER_PRECISION), bigintWriteFunction());
+        }
+        if (isVarcharType(type) && ((VarcharType) type).isUnbounded()) {
+            return super.toWriteMapping(session, VarcharType.createVarcharType(VARCHAR_MAX_LENGTH));
         }
         return super.toWriteMapping(session, type);
     }
