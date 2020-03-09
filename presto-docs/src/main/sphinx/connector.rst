@@ -31,6 +31,7 @@ from different data sources.
     connector/postgresql
     connector/redis
     connector/redshift
+    connector/snowflake
     connector/sqlserver
     connector/system
     connector/thrift

@@ -137,6 +137,7 @@
         <module>presto-iceberg</module>
         <module>presto-google-sheets</module>
         <module>presto-bigquery</module>
+        <module>presto-snowflake</module>
     </modules>
 
     <dependencyManagement>
