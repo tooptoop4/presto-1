@@ -45,6 +45,7 @@ import javax.inject.Inject;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -378,6 +379,71 @@ public class HiveSplitManager
             return results.build();
         });
         return concat(partitionBatches);
+    }
+
+    private TableToPartitionMapping getTableToPartitionMapping(ConnectorSession session, SchemaTableName tableName, String partName, List<Column> tableColumns, List<Column> partitionColumns)
+    {
+        if (isPartitionUseColumnNames(session)) {
+            return getTableToPartitionMappingByColumnNames(tableName, partName, tableColumns, partitionColumns);
+        }
+        ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
+        for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
+            HiveType tableType = tableColumns.get(i).getType();
+            HiveType partitionType = partitionColumns.get(i).getType();
+            if (!tableType.equals(partitionType) && !(tableType.equals(HiveType.HIVE_STRING) && partitionType.getHiveTypeName().toString().toLowerCase(Locale.ENGLISH).startsWith("varchar"))) {
+                if (!coercionPolicy.canCoerce(partitionType, tableType)) {
+                    throw tablePartitionColumnMismatchException(tableName, partName, tableColumns.get(i).getName(), tableType, partitionColumns.get(i).getName(), partitionType);
+                }
+                columnCoercions.put(i, partitionType.getHiveTypeName());
+            }
+        }
+        return mapColumnsByIndex(columnCoercions.build());
+    }
+
+    private TableToPartitionMapping getTableToPartitionMappingByColumnNames(SchemaTableName tableName, String partName, List<Column> tableColumns, List<Column> partitionColumns)
+    {
+        ImmutableMap.Builder<String, Integer> partitionColumnIndexesBuilder = ImmutableMap.builder();
+        for (int i = 0; i < partitionColumns.size(); i++) {
+            partitionColumnIndexesBuilder.put(partitionColumns.get(i).getName().toLowerCase(ENGLISH), i);
+        }
+        Map<String, Integer> partitionColumnsByIndex = partitionColumnIndexesBuilder.build();
+
+        ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
+        ImmutableMap.Builder<Integer, Integer> tableToPartitionColumns = ImmutableMap.builder();
+        for (int tableColumnIndex = 0; tableColumnIndex < tableColumns.size(); tableColumnIndex++) {
+            Column tableColumn = tableColumns.get(tableColumnIndex);
+            HiveType tableType = tableColumn.getType();
+            Integer partitionColumnIndex = partitionColumnsByIndex.get(tableColumn.getName().toLowerCase(ENGLISH));
+            if (partitionColumnIndex == null) {
+                continue;
+            }
+            tableToPartitionColumns.put(tableColumnIndex, partitionColumnIndex);
+            Column partitionColumn = partitionColumns.get(partitionColumnIndex);
+            HiveType partitionType = partitionColumn.getType();
+            if (!tableType.equals(partitionType) && !(tableType.equals(HiveType.HIVE_STRING) && partitionType.getHiveTypeName().toString().toLowerCase(Locale.ENGLISH).startsWith("varchar"))) {
+                if (!coercionPolicy.canCoerce(partitionType, tableType)) {
+                    throw tablePartitionColumnMismatchException(tableName, partName, tableColumn.getName(), tableType, partitionColumn.getName(), partitionType);
+                }
+                columnCoercions.put(partitionColumnIndex, partitionType.getHiveTypeName());
+            }
+        }
+
+        return new TableToPartitionMapping(Optional.of(tableToPartitionColumns.build()), columnCoercions.build());
+    }
+
+    private PrestoException tablePartitionColumnMismatchException(SchemaTableName tableName, String partName, String tableColumnName, HiveType tableType, String partitionColumnName, HiveType partitionType)
+    {
+        return new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                        "There is a mismatch between the table and partition schemas. " +
+                        "The types are incompatible and cannot be coerced. " +
+                        "The column '%s' in table '%s' is declared as type '%s', " +
+                        "but partition '%s' declared column '%s' as type '%s'.",
+                tableColumnName,
+                tableName,
+                tableType,
+                partName,
+                partitionColumnName,
+                partitionType));
     }
 
     static boolean isBucketCountCompatible(int tableBucketCount, int partitionBucketCount)
