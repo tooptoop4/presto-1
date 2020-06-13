@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.genericjdbc;
 
+import com.cloudera.impala.jdbc41.Driver;
 import com.google.inject.Binder;
 import com.google.inject.Key;
 import com.google.inject.Module;
@@ -28,7 +29,7 @@ import io.prestosql.plugin.jdbc.credential.CredentialProvider;
 import io.prestosql.spi.PrestoException;
 
 import java.lang.reflect.InvocationTargetException;
-import java.sql.Driver;
+//import java.sql.Driver;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.prestosql.plugin.jdbc.JdbcErrorCode.DRIVER_NOT_FOUND;
@@ -49,32 +50,6 @@ public class GenericJdbcClientModule
     @ForBaseJdbc
     public ConnectionFactory getConnectionFactory(BaseJdbcConfig config, CredentialProvider credentialProvider)
     {
-        try {
-            Class.forName(config.getDriverClass());
-        }
-        catch (ClassNotFoundException e) {
-            throw new PrestoException(DRIVER_NOT_FOUND, config.getDriverClass() + " not found");
-        }
-        try {
-            try {
-                return new DriverConnectionFactory((Driver) Class.forName(config.getDriverClass()).getConstructor().newInstance(), config, credentialProvider);
-            }
-            catch (InvocationTargetException e) {
-                e.printStackTrace();
-            }
-            catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            }
-        }
-        catch (InstantiationException e) {
-            e.printStackTrace();
-        }
-        catch (IllegalAccessException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return null;
+       return new DriverConnectionFactory(new Driver(), config, credentialProvider);
     }
 }

@@ -65,22 +65,11 @@ public class GenericJdbcClient
     }
 
     @Override
-    protected void copyTableSchema(Connection connection, String catalogName, String schemaName, String tableName, String newTableName, List<String> columnNames)
-            throws SQLException
-    {
-        String sql = format(
-                "SELECT %s INTO %s FROM %s WHERE 0 = 1",
-                columnNames.stream()
-                        .map(this::quoted)
-                        .collect(joining(", ")),
-                quoted(catalogName, schemaName, newTableName),
-                quoted(catalogName, schemaName, tableName));
-        execute(connection, sql);
-    }
-
-    @Override
     public Optional<ColumnMapping> toPrestoType(ConnectorSession session, Connection connection, JdbcTypeHandle typeHandle)
     {
+        if (typeHandle.toString().contains("jdbcTypeName=ARRAY") || typeHandle.toString().contains("jdbcTypeName=MAP") || typeHandle.toString().contains("jdbcTypeName=STRUCT")) {
+            return Optional.empty();
+        }
         Optional<ColumnMapping> mapping = getForcedMappingToVarchar(typeHandle);
         if (mapping.isPresent()) {
             return mapping;
@@ -127,12 +116,6 @@ public class GenericJdbcClient
 
         // TODO implement proper type mapping
         return super.toWriteMapping(session, type);
-    }
-
-    @Override
-    public boolean isLimitGuaranteed()
-    {
-        return false;
     }
 
     private static String singleQuote(String... objects)
