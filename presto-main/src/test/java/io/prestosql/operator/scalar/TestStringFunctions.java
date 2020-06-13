@@ -1046,4 +1046,24 @@ public class TestStringFunctions
 
         assertFunction("concat(cast(null as char(1)), cast(' ' as char(1)))", createCharType(2), null);
     }
+
+    @Test
+    public void testSoundex()
+    {
+        assertFunction("SOUNDEX('jim')", createVarcharType(4), "J500");
+        assertFunction("SOUNDEX('jIM')", createVarcharType(4), "J500");
+        assertFunction("SOUNDEX('JIM')", createVarcharType(4), "J500");
+        assertFunction("SOUNDEX('Jim')", createVarcharType(4), "J500");
+        assertFunction("SOUNDEX('John')", createVarcharType(4), "J500");
+        assertFunction("SOUNDEX('johannes')", createVarcharType(4), "J520");
+        assertFunction("SOUNDEX('Sarah')", createVarcharType(4), "S600");
+        assertFunction("SOUNDEX(null)", createVarcharType(1), null);
+        assertFunction("SOUNDEX('')", createVarcharType(1), "");
+        assertFunction("SOUNDEX('123')", createVarcharType(1), "");
+        assertFunction("SOUNDEX('\uD83D\uDE80')", createVarcharType(1), "");
+        assertFunction("SOUNDEX('j~im')", createVarcharType(4), "J500");
+        assertInvalidFunction("SOUNDEX(123)", "Unexpected parameters (integer) for function soundex. Expected: soundex(varchar)");
+        assertInvalidFunction("SOUNDEX('jąmes')", "The character is not mapped: Ą (index=195)");
+        assertFunction("SOUNDEX('x123')", createVarcharType(4), "X000");
+    }
 }

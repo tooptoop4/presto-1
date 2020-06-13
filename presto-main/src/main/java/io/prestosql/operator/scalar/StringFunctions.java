@@ -911,4 +911,12 @@ public final class StringFunctions
         }
         return source.compareTo(0, prefix.length(), prefix, 0, prefix.length()) == 0;
     }
+
+    @Description("Encodes a string into a Soundex value")
+    @ScalarFunction
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice soundex(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    {
+        return utf8Slice(new org.apache.commons.codec.language.Soundex().encode(slice.toStringUtf8()));
+    }
 }
